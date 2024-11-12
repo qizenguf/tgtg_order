@@ -95,6 +95,14 @@ def main():
         metavar="item_id",
         help="remove item ids from favorites and exit",
     )
+
+    helper_group.add_argument(
+        "-b",
+        "--buy",
+        nargs="+",
+        metavar="item_id",
+        help="buy item",
+    )
     helper_group.add_argument("-R", "--remove_all", action="store_true", help="remove all favorites and exit")
     json_group = parser.add_mutually_exclusive_group(required=False)
     json_group.add_argument("-j", "--json", action="store_true", help="output as plain json")
@@ -199,6 +207,10 @@ def main():
                 print("Item IDs:")
                 print(" ".join(item_ids))
                 print("")
+        elif args.buy is not None:
+            for item_id in args.buy:
+                _run_scanner(scanner, item_id)
+            print("done.")
         elif args.add is not None:
             for item_id in args.add:
                 scanner.set_favorite(item_id)
@@ -250,15 +262,18 @@ def _get_version_info() -> str:
     return f"{__version__} - Update available! See {lastest_release.get('html_url')}"
 
 
-def _run_scanner(scanner: Scanner) -> NoReturn:
+def _run_scanner(scanner: Scanner, item_id: str = None) -> NoReturn:
     _print_welcome_message()
     _print_version_check()
     if scanner.config.quiet and not scanner.config.debug:
         for logger_name in logging.root.manager.loggerDict:
             logging.getLogger(logger_name).setLevel(logging.ERROR)
-    scanner.run()
-
-
+    
+    if item_id != None:
+        scanner.run(item_id)
+    else:
+        scanner.run()
+        
 def _get_new_version() -> Union[dict, None]:
     log = logging.getLogger("tgtg")
     try:

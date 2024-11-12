@@ -5,6 +5,7 @@ import logging
 import random
 import re
 import time
+import webbrowser
 from datetime import datetime
 from http import HTTPStatus
 from typing import List, Union
@@ -34,6 +35,8 @@ INACTIVE_ORDER_ENDPOINT = "order/v7/inactive"
 CREATE_ORDER_ENDPOINT = "order/v7/create/"
 ABORT_ORDER_ENDPOINT = "order/v7/{}/abort"
 ORDER_STATUS_ENDPOINT = "order/v7/{}/status"
+ORDER_PAY_ENDPOINT = "order/v7/{}/pay"
+PAYMENT_ENDPOINT = "payment/v3/"
 USER_AGENTS = [
     "TGTG/{} Dalvik/2.1.0 (Linux; U; Android 9; Nexus 5 Build/M4B30Z)",
     "TGTG/{} Dalvik/2.1.0 (Linux; U; Android 10; SM-G935F Build/NRD90M)",
@@ -391,6 +394,24 @@ class TgtgClient:
         if response.json().get("state") != "SUCCESS":
             raise TgtgAPIError(response.status_code, response.content)
         return response.json().get("order", {})
+
+    def pay_order(self, order_id: str) -> None:
+        self.login()
+        log.warning("paying %s", order_id)
+        response = self._post(ORDER_PAY_ENDPOINT.format(order_id), json={"authorization":{"authorization_payload":{"save_payment_method":False,"payment_type":"PAYPAL","type":"adyenAuthorizationPayload","payload":"{\"configuration\":{\"merchantId\":\"<retracted>\",\"intent\":\"authorize\"},\"name\":\"PayPal\",\"type\":\"paypal\"}"},"payment_provider":"ADYEN","return_url":"adyencheckout://com.app.tgtg.itemview"}})
+        log.warning("pay res %s", response.json())
+        payment_id = response.json().get("payment_id")
+        time.sleep(1)
+        while(True):
+            response = self._post(f"{PAYMENT_ENDPOINT}/{payment_id}")
+            log.warning("payment res %s", response.json())
+            if response.json().get("payload") != "":
+                url_pattern = re.compile(r'"(https?://\S+)"')
+                url = url_pattern.findall(response.json().get("payload"))[0]
+                if url != "":
+                    log.warning("open url for payment %s", url)
+                    webbrowser.open(url)                   
+                    break
 
     def get_order_status(self, order_id: str) -> dict[str, str]:
         self.login()

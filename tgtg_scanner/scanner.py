@@ -21,6 +21,7 @@ from tgtg_scanner.tgtg import TgtgClient
 
 log = logging.getLogger("tgtg")
 
+item_name_map = {}
 
 class Activity:
     """Activity class that creates a spinner if active is True"""
@@ -101,15 +102,23 @@ class Scanner:
                 if item_id != "":
                     item_dict = self.tgtg_client.get_item(item_id)
                     items.append(Item(item_dict, self.location, self.config.locale))
+                    self.reservations.reserve(item_id, "order", 1)
             except TgtgAPIError as err:
                 log.error(err)
         items += self._get_favorites()
         for item in items:
+            item_name_map[item.__getattribute__("item_id")] = item.__getattribute__("display_name") + item.price
+        for item in items:
             self._check_item(item)
 
-        amounts = {item_id: item.items_available for item_id, item in self.state.items() if item is not None}
-        log.debug("new State: %s", amounts)
-        self.reservations.make_orders(self.state, self.notifiers.send)
+        amounts = {item_id : item.items_available for item_id, item in self.state.items() if item is not None}
+        print("Current Stock State:")
+        for item in amounts:
+            print(item + " " + item_name_map[item] + "：剩余" + str(amounts[item]))
+        
+        if amounts[item_id] > 0:
+            self.reservations.make_orders_spin(item_id)
+        self.reservations.update_active_orders()
 
         if len(self.state) == 0:
             log.warning("No items in observation! Did you add any favorites?")
@@ -128,9 +137,11 @@ class Scanner:
         Returns:
             List: List of items
         """
+        log.info("_get_favorites")
         try:
             items = self.get_favorites()
         except TgtgAPIError as err:
+            log.warning("_get_favorites failed")
             log.error(err)
             return []
         return [Item(item, self.location, self.config.locale) for item in items]
@@ -165,7 +176,7 @@ class Scanner:
         )
         self.notifiers.send(item)
 
-    def run(self) -> NoReturn:
+    def run(self, item_id: str = None) -> NoReturn:
         """
         Main Loop of the Scanner
         """
@@ -203,7 +214,10 @@ class Scanner:
                     log.info("Scanner reenabled by cron schedule.")
                     running = True
                 try:
-                    self._job()
+                    if item_id != None:
+                        self.buy(item_id)
+                    else:
+                        self._job()
                 except Exception:
                     log.error("Job Error! - %s", sys.exc_info())
                 finally:
@@ -216,7 +230,7 @@ class Scanner:
                 log.info("Scanner disabled by cron schedule.")
                 running = False
             else:
-                sleep(60)
+                sleep(30)
 
     def stop(self) -> None:
         """
@@ -260,6 +274,17 @@ class Scanner:
         """
         return self.tgtg_client.get_favorites()
 
+    def buy(self, item_id: str) -> None:
+        """Buy an item.
+
+        Args:
+            item_id (str): Item ID
+        """        """
+        Main Loop of the Scanner
+        """        
+        #self.tgtg_client.get_item(item_id)
+        self.reservations.make_orders_spin(item_id)
+
     def set_favorite(self, item_id: str) -> None:
         """Add item to favorites.
 
@@ -281,7 +306,6 @@ class Scanner:
         item_ids = [item.get("item", {}).get("item_id") for item in self.get_favorites()]
         for item_id in item_ids:
             self.unset_favorite(item_id)
-
 
 if __name__ == "__main__":
     print("Please use __main__.py.")

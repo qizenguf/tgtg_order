@@ -56,12 +56,31 @@ class Reservations:
                 except Exception as exc:
                     log.warning("Order failed: %s", exc)
 
+    def make_orders_spin(self, item_id: str) -> None:
+        """Create orders for reservations
+
+        Args:
+            state (Dict[str, Item]): Current item state
+            callback (Callable[[Reservation], None]): Callback for each order
+        """
+        reserv = Reservation(item_id, 1, "spin")
+        for _ in range(24):
+            try:
+                self._create_order(reserv)
+                break
+            except Exception as exc:
+                log.warning("Order failed: %s", exc)
+                time.sleep(0.5)
+                continue
+
     def update_active_orders(self) -> None:
         """Remove orders that are not active anymore"""
         for order_id in list(self.active_orders):
             res = self.client.get_order_status(order_id)
             if res.get("state") != "RESERVED":
                 del self.active_orders[order_id]
+            else:
+                log.warning("orders: %s", res)
 
     def cancel_order(self, order_id: str) -> None:
         """Cancel an order"""
@@ -75,6 +94,7 @@ class Reservations:
     def _create_order(self, reservation: Reservation) -> None:
         res = self.client.create_order(reservation.item_id, reservation.amount)
         order_id = res.get("id")
+        log.warning("new order %s", res)
         if order_id:
             order = Order(
                 order_id,
@@ -83,3 +103,5 @@ class Reservations:
                 reservation.display_name,
             )
             self.active_orders[order_id] = order
+        self.client.pay_order(order_id)
+        
