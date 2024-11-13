@@ -163,7 +163,6 @@ class Scanner:
                     self._send_messages(item)
                     self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
 
-
         self.metrics.update(item)
         self.state[item.item_id] = item
 
