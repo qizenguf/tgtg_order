@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from typing import Callable, Dict, List
-
+import time
 from tgtg_scanner.models.item import Item
 from tgtg_scanner.tgtg import TgtgClient
 
@@ -64,13 +64,13 @@ class Reservations:
             callback (Callable[[Reservation], None]): Callback for each order
         """
         reserv = Reservation(item_id, 1, "spin")
-        for _ in range(24):
+        for _ in range(32):
             try:
                 self._create_order(reserv)
                 break
             except Exception as exc:
                 log.warning("Order failed: %s", exc)
-                time.sleep(0.5)
+                time.sleep(0.8)
                 continue
 
     def update_active_orders(self) -> None:
