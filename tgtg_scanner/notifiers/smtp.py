@@ -112,6 +112,7 @@ class SMTP(Notifier):
         message["Date"] = formatdate(localtime=True)
         message.attach(MIMEText(html, "html", "utf-8"))
         body = message.as_string()
+        log.info("sending email %s", body)
         self._stay_connected()
         try:
             self.server.sendmail(self.sender, recipients, body)

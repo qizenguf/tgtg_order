@@ -261,8 +261,8 @@ class SMTPConfig(NotifierConfig):
     sender: Union[str, None] = None
     recipients: list[str] = field(default_factory=list)
     recipients_per_item: Union[str, None] = None
-    subject: str = "New Magic Bags"
-    body: str = "<b>${{display_name}}</b> </br>New Amount: ${{items_available}}"
+    subject: str = "${{display_name}} New Amount: ${{items_available}} @ ${{price}}"
+    body: str = "<b>${{display_name}}</b> </br>New Amount: ${{items_available}} @ ${{price}}"
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "SMTP", "Enabled", "enabled")

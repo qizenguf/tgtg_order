@@ -102,22 +102,22 @@ class Scanner:
                 if item_id != "":
                     item_dict = self.tgtg_client.get_item(item_id)
                     items.append(Item(item_dict, self.location, self.config.locale))
-                    self.reservations.reserve(item_id, "order", 1)
             except TgtgAPIError as err:
                 log.error(err)
+        
+        for item in items:
+            self._check_item(item, True)
+
         items += self._get_favorites()
         for item in items:
             item_name_map[item.__getattribute__("item_id")] = item.__getattribute__("display_name") + item.price
-        for item in items:
             self._check_item(item)
 
         amounts = {item_id : item.items_available for item_id, item in self.state.items() if item is not None}
         print("Current Stock State:")
-        for item in amounts:
-            print(item + " " + item_name_map[item] + "：剩余" + str(amounts[item]))
-        
-        if amounts[item_id] > 0:
-            self.reservations.make_orders_spin(item_id)
+        for item_id in amounts:
+            print(item_id + " " + item_name_map[item_id] + "：剩余" + str(amounts[item_id]))
+
         self.reservations.update_active_orders()
 
         if len(self.state) == 0:
@@ -137,7 +137,6 @@ class Scanner:
         Returns:
             List: List of items
         """
-        log.info("_get_favorites")
         try:
             items = self.get_favorites()
         except TgtgAPIError as err:
@@ -146,7 +145,7 @@ class Scanner:
             return []
         return [Item(item, self.location, self.config.locale) for item in items]
 
-    def _check_item(self, item: Item) -> None:
+    def _check_item(self, item: Item, notify = False) -> None:
         """
         Checks if the available item amount raised from zero to something
         and triggers notifications.
@@ -156,7 +155,7 @@ class Scanner:
             if state_item.items_available == item.items_available:
                 return
             log.info("%s - new amount: %s", item.display_name, item.items_available)
-            if state_item.items_available == 0 and item.items_available > 0:
+            if notify and item.items_available > 0:
                 self._send_messages(item)
                 self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
         self.metrics.update(item)
