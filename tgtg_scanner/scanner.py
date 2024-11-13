@@ -157,11 +157,12 @@ class Scanner:
                 return
             log.info("%s - new amount: %s", item.display_name, item.items_available)
             if item.items_available > 0:
+                if item.item_id in self.buy_item_ids:          
+                    self.buy(item.item_id)
                 if notify:
                     self._send_messages(item)
                     self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
-                if item.item_id in self.buy_item_ids:          
-                    self.reservation.make_orders_spin(item.item_id)
+
 
         self.metrics.update(item)
         self.state[item.item_id] = item
@@ -284,10 +285,12 @@ class Scanner:
         Args:
             item_id (str): Item ID
         """        """
-        Main Loop of the Scanner
-        """        
-        #self.tgtg_client.get_item(item_id)
-        self.reservations.make_orders_spin(item_id)
+        Main Loop of the buying function
+        """
+        for _ in range(2):
+            reservation = self.reservations.make_orders_spin(item_id)
+            self.notifiers.send(reservation)
+
 
     def set_favorite(self, item_id: str) -> None:
         """Add item to favorites.

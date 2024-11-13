@@ -395,14 +395,14 @@ class TgtgClient:
             raise TgtgAPIError(response.status_code, response.content)
         return response.json().get("order", {})
 
-    def pay_order(self, order_id: str) -> None:
+    def pay_order(self, order_id: str) -> str:
         self.login()
         log.warning("paying %s", order_id)
         response = self._post(ORDER_PAY_ENDPOINT.format(order_id), json={"authorization":{"authorization_payload":{"save_payment_method":False,"payment_type":"PAYPAL","type":"adyenAuthorizationPayload","payload":"{\"configuration\":{\"merchantId\":\"<retracted>\",\"intent\":\"authorize\"},\"name\":\"PayPal\",\"type\":\"paypal\"}"},"payment_provider":"ADYEN","return_url":"adyencheckout://com.app.tgtg.itemview"}})
         log.warning("pay res %s", response.json())
         payment_id = response.json().get("payment_id")
         time.sleep(1)
-        while(True):
+        for _ in range(32):
             response = self._post(f"{PAYMENT_ENDPOINT}/{payment_id}")
             log.warning("payment res %s", response.json())
             if response.json().get("payload") != "":
@@ -410,8 +410,10 @@ class TgtgClient:
                 url = url_pattern.findall(response.json().get("payload"))[0]
                 if url != "":
                     log.warning("open url for payment %s", url)
-                    webbrowser.open(url)                   
-                    break
+                    webbrowser.open(url)
+                    return url
+
+        return ""
 
     def get_order_status(self, order_id: str) -> dict[str, str]:
         self.login()

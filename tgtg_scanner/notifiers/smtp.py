@@ -124,6 +124,8 @@ class SMTP(Notifier):
         """Sends item information via Mail."""
         if isinstance(item, Item):
             self._send_mail(item.unmask(self.subject), item.unmask(self.body), item.item_id)
+        elif isinstance(item, Reservation):
+            self._send_mail("TGTG order placed: " + item.item_id, f"Here is the Paypal link </br><a href={item.payment_url}> {item.payment_url}</a>", item.item_id)
 
     def __repr__(self) -> str:
         return f"SMTP: {self.recipients}"

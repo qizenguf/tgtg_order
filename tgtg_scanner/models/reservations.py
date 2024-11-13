@@ -15,13 +15,12 @@ class Order:
     amount: int
     display_name: str
 
-
 @dataclass
 class Reservation:
     item_id: str
     amount: int
     display_name: str
-
+    payment_url: str = ""
 
 class Reservations:
     def __init__(self, client: TgtgClient) -> None:
@@ -56,7 +55,7 @@ class Reservations:
                 except Exception as exc:
                     log.warning("Order failed: %s", exc)
 
-    def make_orders_spin(self, item_id: str) -> None:
+    def make_orders_spin(self, item_id: str) -> Reservation:
         """Create orders for reservations
 
         Args:
@@ -66,8 +65,7 @@ class Reservations:
         reserv = Reservation(item_id, 1, "spin")
         for _ in range(32):
             try:
-                self._create_order(reserv)
-                break
+                return self._create_order(reserv)
             except Exception as exc:
                 log.warning("Order failed: %s", exc)
                 time.sleep(0.8)
@@ -91,7 +89,7 @@ class Reservations:
         for order_id in list(self.active_orders):
             self.cancel_order(order_id)
 
-    def _create_order(self, reservation: Reservation) -> None:
+    def _create_order(self, reservation: Reservation) -> Reservation:
         res = self.client.create_order(reservation.item_id, reservation.amount)
         order_id = res.get("id")
         log.warning("new order %s", res)
@@ -103,5 +101,6 @@ class Reservations:
                 reservation.display_name,
             )
             self.active_orders[order_id] = order
-        self.client.pay_order(order_id)
+        reservation.payment_url = self.client.pay_order(order_id)
+        return reservation
         
