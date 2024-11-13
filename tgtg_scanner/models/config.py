@@ -538,6 +538,7 @@ class Config(BaseConfig):
 
     file: Union[str, None] = None
     item_ids: list[str] = field(default_factory=list)
+    buy_item_ids: list[str] = field(default_factory=list)
     sleep_time: int = 60
     schedule_cron: Cron = field(default_factory=Cron)
     debug: bool = False
@@ -616,6 +617,7 @@ class Config(BaseConfig):
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_list(parser, "MAIN", "ItemIDs", "item_ids")
+        self._ini_get_list(parser, "MAIN", "BuyItemIDs", "buy_item_ids")
         self._ini_get_int(parser, "MAIN", "SleepTime", "sleep_time")
         self._ini_get_cron(parser, "MAIN", "ScheduleCron", "schedule_cron")
         self._ini_get_boolean(parser, "MAIN", "Debug", "debug")

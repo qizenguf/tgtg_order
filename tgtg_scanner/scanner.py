@@ -51,6 +51,7 @@ class Scanner:
         self.config = config
         self.metrics = Metrics(self.config.metrics_port)
         self.item_ids = set(self.config.item_ids)
+        self.buy_item_ids = set(self.config.buy_item_ids)
         self.cron = self.config.schedule_cron
         self.state: Dict[str, Item] = {}
         self.notifiers: Union[Notifiers, None] = None
@@ -97,7 +98,7 @@ class Scanner:
             raise RuntimeError("Notifiers not initialized!")
 
         items: list[Item] = []
-        for item_id in self.item_ids:
+        for item_id in self.item_ids.union(self.buy_item_ids):
             try:
                 if item_id != "":
                     item_dict = self.tgtg_client.get_item(item_id)
@@ -155,9 +156,13 @@ class Scanner:
             if state_item.items_available == item.items_available:
                 return
             log.info("%s - new amount: %s", item.display_name, item.items_available)
-            if notify and item.items_available > 0:
-                self._send_messages(item)
-                self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
+            if item.items_available > 0:
+                if notify:
+                    self._send_messages(item)
+                    self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
+                if item.item_id in self.buy_item_ids:          
+                    self.reservation.make_orders_spin(item.item_id)
+
         self.metrics.update(item)
         self.state[item.item_id] = item
 
