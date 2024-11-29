@@ -21,6 +21,7 @@ from tgtg_scanner.tgtg import TgtgClient
 
 log = logging.getLogger("tgtg")
 
+item_name_map = {}
 
 class Activity:
     """Activity class that creates a spinner if active is True"""
@@ -50,6 +51,7 @@ class Scanner:
         self.config = config
         self.metrics = Metrics(self.config.metrics_port)
         self.item_ids = set(self.config.item_ids)
+        self.buy_item_ids = set(self.config.buy_item_ids)
         self.cron = self.config.schedule_cron
         self.state: Dict[str, Item] = {}
         self.notifiers: Union[Notifiers, None] = None
@@ -95,20 +97,28 @@ class Scanner:
             raise RuntimeError("Notifiers not initialized!")
 
         items: list[Item] = []
-        for item_id in self.item_ids:
+        for item_id in self.item_ids.union(self.buy_item_ids):
             try:
                 if item_id != "":
                     item_dict = self.tgtg_client.get_item(item_id)
                     items.append(Item(item_dict, self.location, self.config.locale))
             except TgtgAPIError as err:
                 log.error(err)
+        
+        for item in items:
+            self._check_item(item, True)
+
         items += self._get_favorites()
         for item in items:
+            item_name_map[item.__getattribute__("item_id")] = item.__getattribute__("display_name") + item.price
             self._check_item(item)
 
-        amounts = {item_id: item.items_available for item_id, item in self.state.items() if item is not None}
-        log.debug("new State: %s", amounts)
-        self.reservations.make_orders(self.state, self.notifiers.send)
+        amounts = {item_id : item.items_available for item_id, item in self.state.items() if item is not None}
+        print("Current Stock State:")
+        for item_id in amounts:
+            print(item_id + " " + item_name_map[item_id] + "：剩余" + str(amounts[item_id]))
+
+        self.reservations.update_active_orders()
 
         if len(self.state) == 0:
             log.warning("No items in observation! Did you add any favorites?")
@@ -129,11 +139,12 @@ class Scanner:
         try:
             items = self.get_favorites()
         except TgtgAPIError as err:
+            log.warning("_get_favorites failed")
             log.error(err)
             return []
         return [Item(item, self.location, self.config.locale) for item in items]
 
-    def _check_item(self, item: Item) -> None:
+    def _check_item(self, item: Item, notify = False) -> None:
         """
         Checks if the available item amount raised from zero to something
         and triggers notifications.
@@ -143,9 +154,13 @@ class Scanner:
             if state_item.items_available == item.items_available:
                 return
             log.info("%s - new amount: %s", item.display_name, item.items_available)
-            if state_item.items_available == 0 and item.items_available > 0:
-                self._send_messages(item)
-                self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
+            if item.items_available > 0:
+                if item.item_id in self.buy_item_ids:          
+                    self.buy(item.item_id)
+                if notify:
+                    self._send_messages(item)
+                    self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
+
         self.metrics.update(item)
         self.state[item.item_id] = item
 
@@ -163,7 +178,7 @@ class Scanner:
         )
         self.notifiers.send(item)
 
-    def run(self) -> NoReturn:
+    def run(self, item_id: str = None) -> NoReturn:
         """
         Main Loop of the Scanner
         """
@@ -200,7 +215,10 @@ class Scanner:
                     log.info("Scanner reenabled by cron schedule.")
                     running = True
                 try:
-                    self._job()
+                    if item_id != None:
+                        self.buy(item_id)
+                    else:
+                        self._job()
                 except Exception:
                     log.error("Job Error! - %s", sys.exc_info())
                 finally:
@@ -213,7 +231,7 @@ class Scanner:
                 log.info("Scanner disabled by cron schedule.")
                 running = False
             else:
-                sleep(60)
+                sleep(30)
 
     def stop(self) -> None:
         """
@@ -257,6 +275,19 @@ class Scanner:
         """
         return self.tgtg_client.get_favorites()
 
+    def buy(self, item_id: str) -> None:
+        """Buy an item.
+
+        Args:
+            item_id (str): Item ID
+        """        """
+        Main Loop of the buying function
+        """
+        for _ in range(2):
+            reservation = self.reservations.make_orders_spin(item_id)
+            self.notifiers.send(reservation)
+
+
     def set_favorite(self, item_id: str) -> None:
         """Add item to favorites.
 
@@ -278,7 +309,6 @@ class Scanner:
         item_ids = [item.get("item", {}).get("item_id") for item in self.get_favorites()]
         for item_id in item_ids:
             self.unset_favorite(item_id)
-
 
 if __name__ == "__main__":
     print("Please use __main__.py.")

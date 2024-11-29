@@ -261,8 +261,8 @@ class SMTPConfig(NotifierConfig):
     sender: Union[str, None] = None
     recipients: list[str] = field(default_factory=list)
     recipients_per_item: Union[str, None] = None
-    subject: str = "New Magic Bags"
-    body: str = "<b>${{display_name}}</b> </br>New Amount: ${{items_available}}"
+    subject: str = "${{display_name}} New Amount: ${{items_available}} @ ${{price}}"
+    body: str = "<b>${{display_name}}</b> </br>New Amount: ${{items_available}} @ ${{price}}"
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "SMTP", "Enabled", "enabled")
@@ -535,6 +535,7 @@ class Config(BaseConfig):
 
     file: Union[str, None] = None
     item_ids: list[str] = field(default_factory=list)
+    buy_item_ids: list[str] = field(default_factory=list)
     sleep_time: int = 60
     schedule_cron: Cron = field(default_factory=Cron)
     debug: bool = False
@@ -613,6 +614,7 @@ class Config(BaseConfig):
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_list(parser, "MAIN", "ItemIDs", "item_ids")
+        self._ini_get_list(parser, "MAIN", "BuyItemIDs", "buy_item_ids")
         self._ini_get_int(parser, "MAIN", "SleepTime", "sleep_time")
         self._ini_get_cron(parser, "MAIN", "ScheduleCron", "schedule_cron")
         self._ini_get_boolean(parser, "MAIN", "Debug", "debug")
