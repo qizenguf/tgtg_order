@@ -10,10 +10,14 @@ from datetime import datetime
 from http import HTTPStatus
 from typing import List, Union
 from urllib.parse import urljoin, urlparse
+import urllib3
 
 import requests
+from fp.fp import FreeProxy
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
+
+urllib3.disable_warnings(category=urllib3.exceptions.InsecureRequestWarning)
 
 from tgtg_scanner.errors import (
     TgtgAPIError,
@@ -50,6 +54,68 @@ DEFAULT_APK_VERSION = "24.10.1"
 
 APK_RE_SCRIPT = re.compile(r"AF_initDataCallback\({key:\s*'ds:5'.*?data:([\s\S]*?), sideChannel:.+<\/script")
 
+def validate_proxy_response(response):
+    """
+    Validate the response from the proxy
+    """
+    try:
+        # Check if response is not empty
+        if not response or not response.text:
+            return False
+        
+        # Try to parse as JSON (for httpbin.org/ip)
+        try:
+            data = response.json()
+            if 'origin' in data:
+                return True
+        except json.JSONDecodeError:
+            # If not JSON, check for basic content
+            if response.status_code == 200:
+                # Check for meaningful content
+                content_length = len(response.text)
+                has_ip_like_content = any(
+                    str(part) in response.text 
+                    for part in response.text.replace('.', ' ').split()
+                )
+                return content_length > 10 and has_ip_like_content
+        
+        return False
+    except Exception as e:
+        print(f"Response validation error: {e}")
+        return False
+
+def test_proxy(proxy):
+    """
+    Test a single proxy
+    """
+    if proxy.startswith('socks4://'):
+        proxies = {
+            'http': proxy,
+            'https': proxy
+        }
+    elif proxy.startswith('http://'):
+        proxies = {
+            'http': proxy,
+            'https': proxy
+        }
+    else:
+        print(f"Unsupported proxy format: {proxy}")
+        return False
+
+    try:
+        # Test the proxy with a quick request
+        response = requests.get('https://apptoogoodtogo.com/', 
+                                proxies=proxies,
+                                timeout=15)
+        if validate_proxy_response(response):
+            #print(f"[INFO] Proxy {proxy} works! Response: {response.text}\n")
+            print(f"[INFO] Proxy {proxy} works!\n")
+            return True
+        else:
+            return False
+    except Exception as e:
+        print(f"Proxy {proxy} \n failed: {e}")
+        return False
 
 class TgtgSession(requests.Session):
     http_adapter = HTTPAdapter(
@@ -182,18 +248,33 @@ class TgtgClient:
             "datadome_cookie": self.datadome_cookie,
         }
 
-    def _post(self, path, **kwargs) -> requests.Response:
+    def _post(self, path, **kwargs) -> requests.Response:  
         if not self.session:
             self.session = self._create_session()
+        self.session.verify = False
+        if self.proxies:
+            self.session.proxies = self.proxies
+
         response = self.session.post(
             self._get_url(path),
             access_token=self.access_token,
-            **kwargs,
+            **kwargs
         )
         self.datadome_cookie = self.session.cookies.get("datadome")
-        if response.status_code in (HTTPStatus.OK, HTTPStatus.ACCEPTED):
-            self.captcha_error_count = 0
-            return response
+        try:
+            response.raise_for_status()
+            if response.status_code in (HTTPStatus.OK, HTTPStatus.ACCEPTED):
+                if response.headers["content-type"].strip().startswith("application/json"):
+                    self.captcha_error_count = 0
+                    return response
+                else:
+                    # seems to be a proxy error, try a new one
+                    self.captcha_error_count = Max(self.captcha_error_count+1, 10)
+            else:
+                print(f"bad response {response}")
+        except Exception as e:
+                print(f"bad response exception: {e}")
+                self.captcha_error_count += 1
         # Status Code == 403
         # --> Blocked due to rate limit / wrong user_agent.
         # 1. Try: Get latest APK Version from google
@@ -201,7 +282,7 @@ class TgtgClient:
         # 3. Try: Delete datadome cookie and reset session
         # 10.Try: Sleep 10 minutes, and reset session
         if response.status_code == 403:
-            log.debug("Captcha Error 403!")
+            log.debug("Connection Error!")
             self.captcha_error_count += 1
             if self.captcha_error_count == 1:
                 self.user_agent = self._get_user_agent()
@@ -210,14 +291,34 @@ class TgtgClient:
             elif self.captcha_error_count == 4:
                 self.datadome_cookie = None
                 self.session = self._create_session()
-            elif self.captcha_error_count >= 10:
-                log.warning("Too many captcha Errors! Sleeping for 10 minutes...")
-                time.sleep(10 * 60)
-                log.info("Retrying ...")
-                self.captcha_error_count = 0
-                self.session = self._create_session()
-            time.sleep(1)
-            return self._post(path, **kwargs)
+        
+        if self.captcha_error_count >= 10:
+            log.warning("Find a new proxy...")
+            for i in range(50):
+                if self.captcha_error_count >= 100:
+                    break
+                try:
+                    proxy = FreeProxy(url='http://apptoogoodtogo.com', rand=True, elite=True).get()
+                    if proxy:
+                        proxies = {
+                            'http': proxy,
+                            'https': proxy
+                        }
+                        log.info(f"trying with proxy {proxy}")
+                        self.proxies = proxies
+                        self.session = self._create_session()
+                        return self._post(path, **kwargs)
+                except Exception as e:
+                    print(f"No such Proxy: {e}")
+                    continue
+
+            time.sleep(10 * 60)
+            log.info("No proxy is useful. so sleep for 10 minutes")
+            self.captcha_error_count = 0
+            self.session = self._create_session()
+            
+        time.sleep(1)
+        return self._post(path, **kwargs)
         raise TgtgAPIError(response.status_code, response.content)
 
     def _get_user_agent(self) -> str:
@@ -258,10 +359,14 @@ class TgtgClient:
             and (datetime.now() - self.last_time_token_refreshed).seconds <= self.access_token_lifetime
         ):
             return
-        response = self._post(REFRESH_ENDPOINT, json={"refresh_token": self.refresh_token})
-        self.access_token = response.json().get("access_token")
-        self.refresh_token = response.json().get("refresh_token")
-        self.last_time_token_refreshed = datetime.now()
+        try:
+            response = self._post(REFRESH_ENDPOINT, json={"refresh_token": self.refresh_token})
+            self.access_token = response.json().get("access_token")
+            self.refresh_token = response.json().get("refresh_token")
+            self.last_time_token_refreshed = datetime.now()
+        except Exception as e:
+            print(f"bad response: {e}")
+            return
 
     def login(self) -> None:
         if not (self.email or self.access_token and self.refresh_token):
