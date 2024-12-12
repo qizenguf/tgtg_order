@@ -157,7 +157,8 @@ class Scanner:
             if item.items_available > 0:
                 if item.item_id in self.buy_item_ids:          
                     self.buy(item.item_id)
-                if notify:
+                # only notify once for each restock event
+                if notify and state_item.items_available == 0:
                     self._send_messages(item)
                     self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
 
