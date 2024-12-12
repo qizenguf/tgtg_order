@@ -284,8 +284,12 @@ class Scanner:
         """        """
         Main Loop of the buying function
         """
+        item_name = "direct_order"
+        state_item = self.state.get(item_id)
+        if state_item is not None:
+            item_name = state_item.display_name
         for _ in range(2):
-            reservation = self.reservations.make_orders_spin(item_id)
+            reservation = self.reservations.make_orders_spin(item_id, item_name)
             self.notifiers.send(reservation)
 
 

@@ -123,9 +123,9 @@ class SMTP(Notifier):
     def _send(self, item: Union[Item, Reservation]) -> None:
         """Sends item information via Mail."""
         if isinstance(item, Item):
-            self._send_mail(item.unmask(self.subject), item.unmask(self.body), item.item_id)
+            self._send_mail(item.unmask(self.subject), f"Here is the item link: </br><a href=https://share.toogoodtogo.com/item/{item.item_id}> {item.unmask(self.body)} </a>", item.item_id)
         elif isinstance(item, Reservation):
-            self._send_mail("TGTG order placed: " + item.item_id, f"Here is the Paypal link </br><a href={item.payment_url}> {item.payment_url}</a>", item.item_id)
+            self._send_mail("TGTG order placed: " + item.display_name, f"Here is the Paypal link </br><a href={item.payment_url}> {item.display_name}</a>", item.item_id)
 
     def __repr__(self) -> str:
         return f"SMTP: {self.recipients}"

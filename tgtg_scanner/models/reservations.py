@@ -55,14 +55,9 @@ class Reservations:
                 except Exception as exc:
                     log.warning("Order failed: %s", exc)
 
-    def make_orders_spin(self, item_id: str) -> Reservation:
-        """Create orders for reservations
+    def make_orders_spin(self, item_id: str, item_name: str) -> Reservation:
 
-        Args:
-            state (Dict[str, Item]): Current item state
-            callback (Callable[[Reservation], None]): Callback for each order
-        """
-        reserv = Reservation(item_id, 1, "spin")
+        reserv = Reservation(item_id, 1, item_name)
         for _ in range(32):
             try:
                 return self._create_order(reserv)
