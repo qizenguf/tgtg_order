@@ -97,8 +97,11 @@ class Scanner:
         if self.notifiers is None:
             raise RuntimeError("Notifiers not initialized!")
 
-        items: list[Item] = []
-        for item_id in self.item_ids.union(self.buy_item_ids):
+        items = self._get_favorites()
+        fav_ids = [item.item_id for item in items]
+        item_ids = [item_id for item_id in self.item_ids.union(self.buy_item_ids) if item_id not in fav_ids]
+        
+        for item_id in item_ids:
             try:
                 if item_id != "":
                     item_dict = self.tgtg_client.get_item(item_id)
@@ -106,9 +109,8 @@ class Scanner:
             except TgtgAPIError as err:
                 log.error(err)
 
-        items += self._get_favorites()
         for item in items:
-            item_name_map[item.__getattribute__("item_id")] = item.__getattribute__("display_name") + item.price
+            item_name_map[item.__getattribute__("item_id")] = item.__getattribute__("display_name") + item.__getattribute__("price")
             self._check_item(item)
 
         amounts = {item_id : item.items_available for item_id, item in self.state.items() if item is not None}
@@ -147,18 +149,20 @@ class Scanner:
         Checks if the available item amount raised from zero to something
         and triggers notifications.
         """
-        if item.items_available > 0 and item.item_id in self.buy_item_ids:          
+        if item.items_available > 0 and item.item_id in self.buy_item_ids:
+            self.state[item.item_id] = item        
             self.buy(item.item_id, 1)
+            return
         state_item = self.state.get(item.item_id)
-        if state_item is not None:
-            if state_item.items_available == item.items_available:
+        if item.items_available > 0:
+            if state_item is not None and state_item.items_available == item.items_available:
                 return
-            log.info("%s - new amount: %s", item.display_name, item.items_available)
-            if item.items_available > 0:
+            if state_item is None or state_item.items_available == 0:
                 # only notify once for each restock event
-                if notify and state_item.items_available == 0:
+                if notify:
                     self._send_messages(item)
                     self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
+                log.info("%s - new amount: %s", item.display_name, item.items_available)
 
         self.metrics.update(item)
         self.state[item.item_id] = item
@@ -286,7 +290,7 @@ class Scanner:
         item_name = "direct_order"
         state_item = self.state.get(item_id)
         if state_item is not None:
-            item_name = state_item.display_name + "@" + state_item.pickupdate
+            item_name = state_item.display_name + " for " + state_item.price + "@" + state_item.pickupdate
         for _ in range(amount):
             reservation = self.reservations.make_orders_spin(item_id, item_name)
             self.notifiers.send(reservation)
