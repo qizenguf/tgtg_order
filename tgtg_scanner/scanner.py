@@ -105,9 +105,6 @@ class Scanner:
                     items.append(Item(item_dict, self.location, self.config.locale))
             except TgtgAPIError as err:
                 log.error(err)
-        
-        for item in items:
-            self._check_item(item, True)
 
         items += self._get_favorites()
         for item in items:
@@ -150,14 +147,14 @@ class Scanner:
         Checks if the available item amount raised from zero to something
         and triggers notifications.
         """
+        if item.items_available > 0 and item.item_id in self.buy_item_ids:          
+            self.buy(item.item_id, 1)
         state_item = self.state.get(item.item_id)
         if state_item is not None:
             if state_item.items_available == item.items_available:
                 return
             log.info("%s - new amount: %s", item.display_name, item.items_available)
             if item.items_available > 0:
-                if item.item_id in self.buy_item_ids:          
-                    self.buy(item.item_id)
                 # only notify once for each restock event
                 if notify and state_item.items_available == 0:
                     self._send_messages(item)
@@ -219,7 +216,7 @@ class Scanner:
                     running = True
                 try:
                     if item_id != None:
-                        self.buy(item_id)
+                        self.buy(item_id, 2)
                     else:
                         self._job()
                 except Exception:
@@ -278,7 +275,7 @@ class Scanner:
         """
         return self.tgtg_client.get_favorites()
 
-    def buy(self, item_id: str) -> None:
+    def buy(self, item_id: str, amount: int = 1) -> None:
         """Buy an item.
 
         Args:
@@ -289,8 +286,8 @@ class Scanner:
         item_name = "direct_order"
         state_item = self.state.get(item_id)
         if state_item is not None:
-            item_name = state_item.display_name
-        for _ in range(2):
+            item_name = state_item.display_name + "@" + state_item.pickupdate
+        for _ in range(amount):
             reservation = self.reservations.make_orders_spin(item_id, item_name)
             self.notifiers.send(reservation)
 
