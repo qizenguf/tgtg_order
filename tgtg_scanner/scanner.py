@@ -150,8 +150,10 @@ class Scanner:
         and triggers notifications.
         """
         if item.items_available > 0 and item.item_id in self.buy_item_ids:
-            self.state[item.item_id] = item        
-            self.buy(item.item_id, 1)
+            self.state[item.item_id] = item
+            # Don't buy the same item again.
+            self.buy_item_ids.remove(item.item_id)
+            self.buy(item.item_id, 2)
             return
         state_item = self.state.get(item.item_id)
         if item.items_available > 0:
@@ -290,7 +292,7 @@ class Scanner:
         item_name = "direct_order"
         state_item = self.state.get(item_id)
         if state_item is not None:
-            item_name = state_item.display_name + " for " + state_item.price + "@" + state_item.pickupdate
+            item_name = state_item.display_name + " for " + state_item.price + " @" + state_item.pickupdate
         for _ in range(amount):
             reservation = self.reservations.make_orders_spin(item_id, item_name)
             self.notifiers.send(reservation)
