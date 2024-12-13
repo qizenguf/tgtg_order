@@ -56,6 +56,7 @@ class Scanner:
         self.state: Dict[str, Item] = {}
         self.notifiers: Union[Notifiers, None] = None
         self.location: Union[Location, None] = None
+
         self.tgtg_client = TgtgClient(
             email=self.config.tgtg.username,
             timeout=self.config.tgtg.timeout,
@@ -200,6 +201,7 @@ class Scanner:
         if self.config.metrics:
             self.metrics.enable_metrics()
         self.notifiers = Notifiers(self.config, self.reservations, self.favorites)
+        self.tgtg_client.notifiers=self.notifiers
         self.notifiers.start()
         if not self.config.disable_tests and self.notifiers.notifier_count > 0:
             log.info("Sending test Notifications ...")

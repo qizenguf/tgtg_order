@@ -28,7 +28,6 @@ CONFIG_FILE_HEADER = """## TGTG Scanner Configuration
 
 DEPRECATION_NOTICE = "{} is deprecated and will be removed in a future release. Please use {} instead."
 
-
 @dataclass
 class BaseConfig(ABC):
     """Base configuration"""

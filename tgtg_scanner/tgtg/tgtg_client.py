@@ -11,6 +11,8 @@ from http import HTTPStatus
 from typing import List, Union
 from urllib.parse import urljoin, urlparse
 import urllib3
+import importlib
+from dataclasses import dataclass, field
 
 import requests
 from fp.fp import FreeProxy
@@ -108,7 +110,6 @@ def test_proxy(proxy):
                                 proxies=proxies,
                                 timeout=15)
         if validate_proxy_response(response):
-            #print(f"[INFO] Proxy {proxy} works! Response: {response.text}\n")
             print(f"[INFO] Proxy {proxy} works!\n")
             return True
         else:
@@ -189,6 +190,7 @@ class TgtgClient:
         max_polling_tries=DEFAULT_MAX_POLLING_TRIES,
         polling_wait_time=DEFAULT_POLLING_WAIT_TIME,
         device_type="ANDROID",
+        
     ):
         if base_url != BASE_URL:
             log.warn("Using custom tgtg base url: %s", base_url)
@@ -214,6 +216,8 @@ class TgtgClient:
         self.session = None
 
         self.captcha_error_count = 0
+        from tgtg_scanner.notifiers import Notifiers
+        self.notifiers: Union[Notifiers, None] = None
 
     def __del__(self) -> None:
         if self.session:
@@ -312,11 +316,18 @@ class TgtgClient:
                     print(f"No such Proxy: {e}")
                     continue
 
-            time.sleep(10 * 60)
+            
             log.info("No proxy is useful. so sleep for 10 minutes")
+            if self.notifiers:
+                from tgtg_scanner.models import Item
+                message = Item({
+                    "display_name": "tgtg Connection failed. Sleep for 10 minutes.",})
+                self.notifiers.send(message)
+            time.sleep(10 * 60)
+
             self.captcha_error_count = 0
             self.session = self._create_session()
-            
+
         time.sleep(1)
         return self._post(path, **kwargs)
         raise TgtgAPIError(response.status_code, response.content)
