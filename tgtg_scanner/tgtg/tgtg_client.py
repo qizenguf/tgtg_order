@@ -297,34 +297,41 @@ class TgtgClient:
                 self.session = self._create_session()
         
         if self.captcha_error_count >= 10:
-            log.warning("Find a new proxy...")
             for i in range(50):
-                if self.captcha_error_count >= 100:
+                if self.captcha_error_count > 100:
                     break
-                try:
-                    proxy = FreeProxy(url='http://apptoogoodtogo.com', rand=True, elite=True).get()
-                    if proxy:
-                        proxies = {
-                            'http': proxy,
-                            'https': proxy
-                        }
-                        log.info(f"trying with proxy {proxy}")
-                        self.proxies = proxies
-                        self.session = self._create_session()
-                        return self._post(path, **kwargs)
-                except Exception as e:
-                    print(f"No such Proxy: {e}")
-                    continue
-
-            
-            log.info("No proxy is useful. so sleep for 10 minutes")
+                elif self.captcha_error_count == 100:
+                    proxies = None
+                else:
+                    log.info("Find a new proxy...")
+                    try:
+                        proxy = FreeProxy(url='http://apptoogoodtogo.com', rand=True, elite=True).get()
+                        if proxy:
+                            proxies = {
+                                'http': proxy,
+                                'https': proxy
+                            }
+                            log.info(f"Attempt {self.captcha_error_count}: trying with proxy {proxy}")
+                            self.proxies = proxies
+                    except Exception as e:
+                        print(f"No such Proxy: {e}")
+                        continue
+                self.session = self._create_session()
+                return self._post(path, **kwargs)
+    
+            log.warning("No proxy is useful, So sleep for 10 minutes")
             if self.notifiers:
                 from tgtg_scanner.models import Item
                 message = Item({
-                    "display_name": "tgtg Connection failed. Sleep for 10 minutes.",})
+                    "display_name": "tgtg Connection failed. Sleep for 15 minutes.",})
                 self.notifiers.send(message)
-            time.sleep(10 * 60)
-
+                time.sleep(15 * 60)
+                message = Item({
+                    "display_name": "tgtg Connection restarts now after sleep for 15 minutes.",})
+                self.notifiers.send(message)
+            else:
+                time.sleep(15 * 60)
+            self.proxies = None
             self.captcha_error_count = 0
             self.session = self._create_session()
 

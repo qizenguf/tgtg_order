@@ -150,6 +150,7 @@ class Scanner:
         and triggers notifications.
         """
         if item.items_available > 0 and item.item_id in self.buy_item_ids:
+            self._send_messages(item)
             self.state[item.item_id] = item
             # Don't buy the same item again.
             self.buy_item_ids.remove(item.item_id)
