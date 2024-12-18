@@ -58,7 +58,8 @@ class Reservations:
     def make_orders_spin(self, item_id: str, item_name: str) -> Reservation:
 
         reserv = Reservation(item_id, 1, item_name)
-        for _ in range(32):
+        self.client.proxies = None
+        for _ in range(4):
             try:
                 return self._create_order(reserv)
             except Exception as exc:
