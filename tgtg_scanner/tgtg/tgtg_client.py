@@ -273,7 +273,7 @@ class TgtgClient:
                     return response
                 else:
                     # seems to be a proxy error, try a new one
-                    self.captcha_error_count = Max(self.captcha_error_count+1, 10)
+                    self.captcha_error_count = max(self.captcha_error_count+1, 10)
             else:
                 print(f"bad response {response}")
         except Exception as e:
@@ -297,44 +297,41 @@ class TgtgClient:
                 self.session = self._create_session()
         
         if self.captcha_error_count >= 10:
-            for i in range(50):
-                if self.captcha_error_count > 100:
-                    break
-                elif self.captcha_error_count == 100:
-                    proxies = None
+            if self.captcha_error_count > 100:
+                log.warning("No proxy is useful, So sleep for 15 minutes")
+                if self.notifiers:
+                    from tgtg_scanner.models import Item
+                    message = Item({
+                        "display_name": "tgtg Connection failed. Sleep for 15 minutes.",})
+                    self.notifiers.send(message)
+                    time.sleep(15 * 60)
+                    message = Item({
+                        "display_name": "tgtg Connection restarts now after sleep for 15 minutes.",})
+                    self.notifiers.send(message)
                 else:
-                    log.info("Find a new proxy...")
-                    try:
-                        proxy = FreeProxy(url='http://apptoogoodtogo.com', rand=True, elite=True).get()
-                        if proxy:
-                            proxies = {
-                                'http': proxy,
-                                'https': proxy
-                            }
-                            log.info(f"Attempt {self.captcha_error_count}: trying with proxy {proxy}")
-                            self.proxies = proxies
-                    except Exception as e:
-                        print(f"No such Proxy: {e}")
-                        continue
-                self.session = self._create_session()
-                return self._post(path, **kwargs)
-    
-            log.warning("No proxy is useful, So sleep for 10 minutes")
-            if self.notifiers:
-                from tgtg_scanner.models import Item
-                message = Item({
-                    "display_name": "tgtg Connection failed. Sleep for 15 minutes.",})
-                self.notifiers.send(message)
-                time.sleep(15 * 60)
-                message = Item({
-                    "display_name": "tgtg Connection restarts now after sleep for 15 minutes.",})
-                self.notifiers.send(message)
+                    time.sleep(15 * 60)
+                self.proxies = None
+                self.captcha_error_count = 0
+            elif self.captcha_error_count == 100:
+                self.proxies = None
             else:
-                time.sleep(15 * 60)
-            self.proxies = None
-            self.captcha_error_count = 0
-            self.session = self._create_session()
+                log.info("Find a new proxy...")
+                try:
+                    proxy = FreeProxy(url='http://apptoogoodtogo.com', rand=True, elite=True).get()
+                    if proxy:
+                        proxies = {
+                            'http': proxy,
+                            'https': proxy
+                        }
+                        log.info(f"Attempt {self.captcha_error_count}: trying with proxy {proxy}")
+                        self.proxies = proxies
+                except Exception as e:
+                    print(f"No such Proxy: {e}")
+                    self.proxies = None
 
+            self.session = self._create_session()
+            return self._post(path, **kwargs)
+   
         time.sleep(1)
         return self._post(path, **kwargs)
         raise TgtgAPIError(response.status_code, response.content)
