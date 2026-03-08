@@ -5,7 +5,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from smtplib import SMTPException, SMTPServerDisconnected
-from typing import Union
 
 from tgtg_scanner.errors import MaskConfigurationError, SMTPConfigurationError
 from tgtg_scanner.models import Config, Favorites, Item, Reservations
@@ -16,11 +15,11 @@ log = logging.getLogger("tgtg")
 
 
 class SMTP(Notifier):
-    """Notifier for SMTP"""
+    """Notifier for SMTP."""
 
     def __init__(self, config: Config, reservations: Reservations, favorites: Favorites):
         super().__init__(config, reservations, favorites)
-        self.server: Union[smtplib.SMTP, None] = None
+        self.server: smtplib.SMTP | None = None
         self.debug = config.debug
         self.enabled = config.smtp.enabled
         self.host = config.smtp.host
@@ -52,8 +51,8 @@ class SMTP(Notifier):
                 item_recipients = None
                 try:
                     item_recipients = json.loads(config.smtp.recipients_per_item)
-                except json.decoder.JSONDecodeError:
-                    raise SMTPConfigurationError("Recipients per Item is not a valid dictionary")
+                except json.decoder.JSONDecodeError as err:
+                    raise SMTPConfigurationError("Recipients per Item is not a valid dictionary") from err
                 if not isinstance(item_recipients, dict) or any(
                     not isinstance(value, (list, str)) for value in item_recipients.values()
                 ):
@@ -61,7 +60,7 @@ class SMTP(Notifier):
                 self.item_recipients = {k: v if isinstance(v, list) else [v] for k, v in item_recipients.items()}
 
     def __del__(self):
-        """Closes SMTP connection when shutdown"""
+        """Closes SMTP connection when shutdown."""
         if self.server:
             try:
                 self.server.quit()
@@ -69,7 +68,7 @@ class SMTP(Notifier):
                 log.warning(exc)
 
     def _connect(self) -> None:
-        """Connect to SMTP Server"""
+        """Connect to SMTP Server."""
         if self.host is None or self.port is None:
             raise SMTPConfigurationError()
         if self.use_ssl:
@@ -84,7 +83,7 @@ class SMTP(Notifier):
             self.server.login(self.username, self.password)
 
     def _stay_connected(self) -> None:
-        """Refresh server connection if connection is lost"""
+        """Refresh server connection if connection is lost."""
         status = -1
         if self.server is not None:
             try:
@@ -95,7 +94,7 @@ class SMTP(Notifier):
             self._connect()
 
     def _send_mail(self, subject: str, html: str, item_id: str) -> None:
-        """Sends mail with html body"""
+        """Sends mail with html body."""
         if self.server is None:
             self._connect()
         if self.sender is None or self.recipients is None or self.server is None:
@@ -120,7 +119,7 @@ class SMTP(Notifier):
             self._connect()
             self.server.sendmail(self.sender, recipients, body)
 
-    def _send(self, item: Union[Item, Reservation]) -> None:
+    def _send(self, item: Item | Reservation) -> None:
         """Sends item information via Mail."""
         if isinstance(item, Item):
             self._send_mail(item.unmask(self.subject), item.unmask(self.body), item.item_id)

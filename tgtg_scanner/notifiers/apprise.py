@@ -1,5 +1,4 @@
 import logging
-from typing import Union
 
 import apprise
 
@@ -12,10 +11,9 @@ log = logging.getLogger("tgtg")
 
 
 class Apprise(Notifier):
-    """
-    Notifier for Apprise. \n
-    For more information on Apprise visit\n
-    https://github.com/caronc/apprise
+    """Notifier for Apprise.
+
+    For more information on Apprise visit https://github.com/caronc/apprise.
     """
 
     def __init__(self, config: Config, reservations: Reservations, favorites: Favorites):
@@ -35,8 +33,8 @@ class Apprise(Notifier):
             except MaskConfigurationError as exc:
                 raise AppriseConfigurationError(exc.message) from exc
 
-    def _send(self, item: Union[Item, Reservation]) -> None:
-        """Sends item information via configured Apprise URL"""
+    def _send(self, item: Item | Reservation) -> None:
+        """Sends item information via configured Apprise URL."""
         if isinstance(item, Item):
             if self.url is None or self.body is None or self.title is None:
                 raise AppriseConfigurationError()

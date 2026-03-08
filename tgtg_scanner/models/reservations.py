@@ -1,7 +1,9 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Callable, Dict, List
 import time
+
 from tgtg_scanner.models.item import Item
 from tgtg_scanner.tgtg import TgtgClient
 
@@ -25,25 +27,27 @@ class Reservation:
 class Reservations:
     def __init__(self, client: TgtgClient) -> None:
         self.client = client
-        self.reservation_query: List[Reservation] = []
-        self.active_orders: Dict[str, Order] = {}
+        self.reservation_query: list[Reservation] = []
+        self.active_orders: dict[str, Order] = {}
 
     def reserve(self, item_id: str, display_name: str, amount: int = 1) -> None:
-        """Create a new reservation
+        """Create a new reservation.
 
         Args:
             item_id (str): Item ID
             display_name (str): Item display name
             amount (int, optional): Amount. Defaults to 1.
+
         """
         self.reservation_query.append(Reservation(item_id, amount, display_name))
 
-    def make_orders(self, state: Dict[str, Item], callback: Callable[[Reservation], None]) -> None:
-        """Create orders for reservations
+    def make_orders(self, state: dict[str, Item], callback: Callable[[Reservation], None]) -> None:
+        """Create orders for reservations.
 
         Args:
             state (Dict[str, Item]): Current item state
             callback (Callable[[Reservation], None]): Callback for each order
+
         """
         for reservation in self.reservation_query:
             item = state.get(reservation.item_id)
@@ -72,7 +76,7 @@ class Reservations:
                 continue
 
     def update_active_orders(self) -> None:
-        """Remove orders that are not active anymore"""
+        """Remove orders that are not active anymore."""
         for order_id in list(self.active_orders):
             res = self.client.get_order_status(order_id)
             if res.get("state") != "RESERVED":
@@ -81,11 +85,11 @@ class Reservations:
                 log.warning("orders: %s", res)
 
     def cancel_order(self, order_id: str) -> None:
-        """Cancel an order"""
+        """Cancel an order."""
         self.client.abort_order(order_id)
 
     def cancel_all_orders(self) -> None:
-        """Cancel all active orders"""
+        """Cancel all active orders."""
         for order_id in list(self.active_orders):
             self.cancel_order(order_id)
 

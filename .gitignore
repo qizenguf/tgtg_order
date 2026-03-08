@@ -10,6 +10,7 @@ venv
 coverage.xml
 .pytest_cache
 .mypy_cache
+.ruff_cache
 .tox
 
 .env
@@ -19,3 +20,4 @@ pytest_tmp
 out.toml
 out.yaml
 dev.py
+compose.yml

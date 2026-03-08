@@ -1,5 +1,4 @@
 import logging
-from typing import Union
 
 from tgtg_scanner.errors import ConsoleConfigurationError, MaskConfigurationError
 from tgtg_scanner.models import Config, Favorites, Item, Reservations
@@ -10,7 +9,7 @@ log = logging.getLogger("tgtg")
 
 
 class Console(Notifier):
-    """Notifier for the console output"""
+    """Notifier for the console output."""
 
     def __init__(self, config: Config, reservations: Reservations, favorites: Favorites):
         super().__init__(config, reservations, favorites)
@@ -24,7 +23,7 @@ class Console(Notifier):
             except MaskConfigurationError as exc:
                 raise ConsoleConfigurationError(exc.message) from exc
 
-    def _send(self, item: Union[Item, Reservation]) -> None:
+    def _send(self, item: Item | Reservation) -> None:
         if isinstance(item, Item):
             message = item.unmask(self.body)
             print(message)

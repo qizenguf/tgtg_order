@@ -8,7 +8,6 @@ import warnings
 from functools import wraps
 from queue import Empty
 from time import sleep
-from typing import Union
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -55,7 +54,7 @@ def _private(func):
 
 
 class Telegram(Notifier):
-    """Notifier for Telegram"""
+    """Notifier for Telegram."""
 
     MAX_RETRIES = 10
 
@@ -72,7 +71,7 @@ class Telegram(Notifier):
         self.disable_commands = config.telegram.disable_commands
         self.only_reservations = config.telegram.only_reservations
         self.cron = config.telegram.cron
-        self.mute: Union[datetime.datetime, None] = None
+        self.mute: datetime.datetime | None = None
         self.retries = 0
         if self.enabled:
             if not self.token or not self.body:
@@ -201,13 +200,13 @@ class Telegram(Notifier):
                 text = text.replace(match.group(0), val)
         return text
 
-    def _unmask_image(self, text: str, item: Item) -> Union[bytes, None]:
+    def _unmask_image(self, text: str, item: Item) -> bytes | None:
         if text in ["${{item_logo_bytes}}", "${{item_cover_bytes}}"]:
             matches = item._get_variables(text)
             return bytes(getattr(item, matches[0].group(1)))
         return None
 
-    async def _send(self, item: Union[Item, Reservation]) -> None:  # type: ignore[override]
+    async def _send(self, item: Item | Reservation) -> None:  # type: ignore[override]
         """Send item information as Telegram message.
 
         Reservation notifications are always send.
@@ -227,7 +226,7 @@ class Telegram(Notifier):
             return
         await self._send_message(message, image)
 
-    async def _send_message(self, message: str, image: Union[bytes, None] = None) -> None:
+    async def _send_message(self, message: str, image: bytes | None = None) -> None:
         log.debug("%s message: %s", self.name, message)
         fmt = ParseMode.MARKDOWN_V2
         for chat_id in self.chat_ids:
@@ -264,7 +263,7 @@ class Telegram(Notifier):
 
     @_private
     async def _mute(self, update: Update, context: CallbackContext) -> None:
-        """Deactivates Telegram Notifications for x days"""
+        """Deactivates Telegram Notifications for x days."""
         days = int(context.args[0]) if context.args and context.args[0].isnumeric() else 1
         self.mute = datetime.datetime.now() + datetime.timedelta(days=days)
         log.info("Deactivated Telegram Notifications for %s days", days)
@@ -275,7 +274,7 @@ class Telegram(Notifier):
 
     @_private
     async def _unmute(self, update: Update, _) -> None:
-        """Reactivate Telegram Notifications"""
+        """Reactivate Telegram Notifications."""
         self.mute = None
         log.info("Reactivated Telegram Notifications")
         await update.message.reply_text("Reactivated Telegram Notifications")
@@ -466,7 +465,7 @@ class Telegram(Notifier):
         log.warning('Update "%s" caused error "%s"', update, context.error)
 
     async def _get_chat_id(self) -> None:
-        """Initializes an interaction with the user
+        r"""Initializes an interaction with the user
         to obtain the telegram chat id. \n
         On using the config.ini configuration the
         chat id will be stored in the config.ini.

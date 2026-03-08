@@ -1,5 +1,4 @@
 import logging
-from typing import Type, Union
 
 from tgtg_scanner.models import Config, Cron, Favorites, Item, Reservations
 from tgtg_scanner.models.reservations import Reservation
@@ -17,11 +16,11 @@ from tgtg_scanner.notifiers.webhook import WebHook
 
 log = logging.getLogger("tgtg")
 
-NOTIFIERS: list[Type[Notifier]] = [Apprise, Console, PushSafer, SMTP, IFTTT, Ntfy, WebHook, Telegram, Script, Discord]
+NOTIFIERS: list[type[Notifier]] = [Apprise, Console, PushSafer, SMTP, IFTTT, Ntfy, WebHook, Telegram, Script, Discord]
 
 
 class Notifiers:
-    """Notifier Manager"""
+    """Notifier Manager."""
 
     def __init__(self, config: Config, reservations: Reservations, favorites: Favorites):
         self._notifiers: list[Notifier] = [NotifierCls(config, reservations, favorites) for NotifierCls in NOTIFIERS]
@@ -39,24 +38,26 @@ class Notifiers:
 
     @property
     def notifier_count(self) -> int:
-        """Number of enabled notifiers
+        """Number of enabled notifiers.
 
         Returns:
             int: notifier count
+
         """
         return len(self._enabled_notifiers)
 
-    def send(self, item: Union[Item, Reservation]) -> None:
+    def send(self, item: Item | Reservation) -> None:
         """Send notifications on all enabled notifiers.
 
         Args:
             item (Item, Reservation): Item information to send
+
         """
         for notifier in self._notifiers:
             notifier.send(item)
 
     def start(self) -> None:
-        """Start all notifiers"""
+        """Start all notifiers."""
         for notifier in self._notifiers:
             try:
                 notifier.start()
@@ -64,7 +65,7 @@ class Notifiers:
                 log.warning("Error starting %s - %s", notifier, exc)
 
     def stop(self) -> None:
-        """Stop all notifiers"""
+        """Stop all notifiers."""
         for notifier in self._notifiers:
             try:
                 notifier.stop()

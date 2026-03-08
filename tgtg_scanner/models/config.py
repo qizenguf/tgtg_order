@@ -6,9 +6,9 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from os import environ
+from os import getenv
 from pathlib import Path
-from typing import IO, Any, Union
+from typing import IO, Any
 
 import humanize
 
@@ -31,7 +31,7 @@ DEPRECATION_NOTICE = "{} is deprecated and will be removed in a future release. 
 
 @dataclass
 class BaseConfig(ABC):
-    """Base configuration"""
+    """Base configuration."""
 
     @abstractmethod
     def _read_ini(self, parser: configparser.ConfigParser):
@@ -88,17 +88,17 @@ class BaseConfig(ABC):
                 raise ConfigurationError(f"Invalid cron value for {section}.{key} - {err}") from err
 
     def _env_get(self, key: str, attr: str):
-        value = environ.get(key, None)
+        value = getenv(key)
         if value is not None:
             setattr(self, attr, self._decode(value))
 
     def _env_get_boolean(self, key: str, attr: str):
-        value = environ.get(key, None)
+        value = getenv(key)
         if value is not None:
             setattr(self, attr, value.lower() in {"true", "1", "t", "y", "yes"})
 
     def _env_get_int(self, key: str, attr: str):
-        value = environ.get(key, None)
+        value = getenv(key)
         if value is not None:
             try:
                 setattr(self, attr, int(value))
@@ -106,12 +106,12 @@ class BaseConfig(ABC):
                 raise ConfigurationError(f"Invalid integer value for {key} - {err}") from err
 
     def _env_get_list(self, key: str, attr: str):
-        value = environ.get(key, None)
+        value = getenv(key)
         if value is not None:
             setattr(self, attr, [self._decode(val.strip()) for val in value.split(",")])
 
     def _env_get_dict(self, key: str, attr: str):
-        value = environ.get(key, None)
+        value = getenv(key)
         if value is not None:
             try:
                 setattr(self, attr, json.loads(value))
@@ -119,7 +119,7 @@ class BaseConfig(ABC):
                 raise ConfigurationError(f"Invalid JSON value for {key} - {err}") from err
 
     def _env_get_cron(self, key: str, attr: str):
-        value = environ.get(key, None)
+        value = getenv(key)
         if value is not None:
             try:
                 setattr(self, attr, Cron(value))
@@ -129,7 +129,7 @@ class BaseConfig(ABC):
 
 @dataclass
 class NotifierConfig(BaseConfig):
-    """Base Notifier configuration"""
+    """Base Notifier configuration."""
 
     enabled: bool = False
     cron: Cron = field(default_factory=Cron)
@@ -137,9 +137,9 @@ class NotifierConfig(BaseConfig):
 
 @dataclass
 class AppriseConfig(NotifierConfig):
-    """Apprise Notifier configuration"""
+    """Apprise Notifier configuration."""
 
-    url: Union[str, None] = None
+    url: str | None = None
     title: str = "New Magic Bags"
     body: str = "${{display_name}} - new amount: ${{items_available}} - ${{link}}"
 
@@ -160,9 +160,9 @@ class AppriseConfig(NotifierConfig):
 
 @dataclass
 class TelegramConfig(NotifierConfig):
-    """Telegram Notifier configuration"""
+    """Telegram Notifier configuration."""
 
-    token: Union[str, None] = None
+    token: str | None = None
     chat_ids: list[str] = field(default_factory=list)
     disable_commands: bool = False
     only_reservations: bool = False
@@ -170,7 +170,7 @@ class TelegramConfig(NotifierConfig):
     body: str = (
         "*${{display_name}}*\n*Available*: ${{items_available}}\n*Price*: ${{price}} ${{currency}}\n*Pickup*: ${{pickupdate}}"
     )
-    image: Union[str, None] = None
+    image: str | None = None
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "TELEGRAM", "Enabled", "enabled")
@@ -200,39 +200,33 @@ class TelegramConfig(NotifierConfig):
 
 @dataclass
 class PushSaferConfig(NotifierConfig):
-    """PushSafer Notifier configuration"""
+    """PushSafer Notifier configuration."""
 
-    key: Union[str, None] = None
-    device_id: Union[str, None] = None
+    key: str | None = None
+    device_ids: list[str] = field(default_factory=list)
+
+    @property
+    def device_id(self) -> str | None:
+        return self.device_ids[0] if self.device_ids else None
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "PUSHSAFER", "Enabled", "enabled")
         self._ini_get_cron(parser, "PUSHSAFER", "Cron", "cron")
         self._ini_get(parser, "PUSHSAFER", "Key", "key")
-        self._ini_get(parser, "PUSHSAFER", "DeviceID", "device_id")
+        self._ini_get_list(parser, "PUSHSAFER", "DeviceID", "device_ids")  # Legacy support
+        self._ini_get_list(parser, "PUSHSAFER", "DeviceIDs", "device_ids")
 
     def _read_env(self):
-        if environ.get("PUSH_SAFER", None):
-            log.warning(DEPRECATION_NOTICE.format("PUSH_SAFER", "PUSHSAFER"))
-        self._env_get_boolean("PUSH_SAFER", "enabled")
         self._env_get_boolean("PUSHSAFER", "enabled")
-        if environ.get("PUSH_SAFER_CRON", None):
-            log.warning(DEPRECATION_NOTICE.format("PUSH_SAFER_CRON", "PUSHSAFER_CRON"))
-        self._env_get_cron("PUSH_SAFER_CRON", "cron")
         self._env_get_cron("PUSHSAFER_CRON", "cron")
-        if environ.get("PUSH_SAFER_KEY", None):
-            log.warning(DEPRECATION_NOTICE.format("PUSH_SAFER_KEY", "PUSHSAFER_KEY"))
-        self._env_get("PUSH_SAFER_KEY", "key")
         self._env_get("PUSHSAFER_KEY", "key")
-        if environ.get("PUSH_SAFER_DEVICE_ID", None):
-            log.warning(DEPRECATION_NOTICE.format("PUSH_SAFER_DEVICE_ID", "PUSHSAFER_DEVICE_ID"))
-        self._env_get("PUSH_SAFER_DEVICE_ID", "device_id")
-        self._env_get("PUSHSAFER_DEVICE_ID", "device_id")
+        self._env_get_list("PUSHSAFER_DEVICE_ID", "device_ids")
+        self._env_get_list("PUSHSAFER_DEVICE_IDS", "device_ids")
 
 
 @dataclass
 class ConsoleConfig(NotifierConfig):
-    """Console Notifier configuration"""
+    """Console Notifier configuration."""
 
     body: str = "${{display_name}} - new amount: ${{items_available}} - ${{link}}"
 
@@ -249,16 +243,16 @@ class ConsoleConfig(NotifierConfig):
 
 @dataclass
 class SMTPConfig(NotifierConfig):
-    """SMTP Notifier configuration"""
+    """SMTP Notifier configuration."""
 
-    host: Union[str, None] = None
-    port: Union[int, None] = None
-    username: Union[str, None] = None
-    password: Union[str, None] = None
+    host: str | None = None
+    port: int | None = None
+    username: str | None = None
+    password: str | None = None
     use_tls: bool = False
     use_ssl: bool = False
     timeout: int = 60
-    sender: Union[str, None] = None
+    sender: str | None = None
     recipients: list[str] = field(default_factory=list)
     recipients_per_item: Union[str, None] = None
     subject: str = "${{display_name}} New Amount: ${{items_available}} @ ${{price}}"
@@ -294,7 +288,7 @@ class SMTPConfig(NotifierConfig):
         self._env_get_boolean("SMTP_SSL", "use_ssl")
         self._env_get_int("SMTP_TIMEOUT", "timeout")
         self._env_get("SMTP_SENDER", "sender")
-        if environ.get("SMTP_RECIPIENT", None):
+        if getenv("SMTP_RECIPIENT"):
             log.warning(DEPRECATION_NOTICE.format("SMTP_RECIPIENT", "SMTP_RECIPIENTS"))
         self._env_get_list("SMTP_RECIPIENT", "recipients")  # legacy support
         self._env_get_list("SMTP_RECIPIENTS", "recipients")
@@ -305,10 +299,10 @@ class SMTPConfig(NotifierConfig):
 
 @dataclass
 class IFTTTConfig(NotifierConfig):
-    """IFTTT Notifier configuration"""
+    """IFTTT Notifier configuration."""
 
     event: str = "tgtg_notification"
-    key: Union[str, None] = None
+    key: str | None = None
     body: str = '{"value1": "${{display_name}}", "value2": ${{items_available}}, "value3": "${{link}}"}'
     timeout: int = 60
 
@@ -331,19 +325,19 @@ class IFTTTConfig(NotifierConfig):
 
 @dataclass
 class NtfyConfig(NotifierConfig):
-    """Ntfy Notifier configuration"""
+    """Ntfy Notifier configuration."""
 
     server: str = "https://ntfy.sh"
-    topic: Union[str, None] = None
+    topic: str | None = None
     title: str = "New Magic Bags"
     message: str = "${{display_name}} - New Amount: ${{items_available}} - ${{link}}"
-    body: Union[str, None] = None
+    body: str | None = None
     priority: str = "default"
     tags: str = "shopping,tgtg"
     click: str = "${{link}}"
-    username: Union[str, None] = None
-    password: Union[str, None] = None
-    token: Union[str, None] = None
+    username: str | None = None
+    password: str | None = None
+    token: str | None = None
     timeout: int = 60
 
     def _read_ini(self, parser: configparser.ConfigParser):
@@ -381,16 +375,16 @@ class NtfyConfig(NotifierConfig):
 
 @dataclass
 class WebhookConfig(NotifierConfig):
-    """Webhook Notifier configuration"""
+    """Webhook Notifier configuration."""
 
-    url: Union[str, None] = None
+    url: str | None = None
     method: str = "POST"
     headers: dict[str, str | bytes] = field(default_factory=dict)
     body: str = ""
     type: str = "text/plain"
     timeout: int = 60
-    username: Union[str, None] = None
-    password: Union[str, None] = None
+    username: str | None = None
+    password: str | None = None
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "WEBHOOK", "Enabled", "enabled")
@@ -419,9 +413,9 @@ class WebhookConfig(NotifierConfig):
 
 @dataclass
 class ScriptConfig(NotifierConfig):
-    """Script Notifier configuration"""
+    """Script Notifier configuration."""
 
-    command: Union[str, None] = None
+    command: str | None = None
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "SCRIPT", "Enabled", "enabled")
@@ -436,11 +430,11 @@ class ScriptConfig(NotifierConfig):
 
 @dataclass
 class DiscordConfig(NotifierConfig):
-    """Discord configuration"""
+    """Discord configuration."""
 
     enabled: bool = False
-    prefix: Union[str, None] = "!"
-    token: Union[str, None] = None
+    prefix: str | None = "!"
+    token: str | None = None
     channel: int = 0
     body: str = (
         "*${{display_name}}*\n*Available*: ${{items_available}}\n*Price*: ${{price}} ${{currency}}\n*Pickup*: ${{pickupdate}}"
@@ -468,16 +462,18 @@ class DiscordConfig(NotifierConfig):
 
 @dataclass
 class TgtgConfig(BaseConfig):
-    """Tgtg configuration"""
+    """Tgtg configuration."""
 
-    username: Union[str, None] = None
-    access_token: Union[str, None] = None
-    refresh_token: Union[str, None] = None
-    datadome: Union[str, None] = None
+    username: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    datadome: str | None = None
     timeout: int = 60
     access_token_lifetime: int = 14400
     max_polling_tries: int = 24
     polling_wait_time: int = 5
+    apk_version: str | None = None
+    user_agent: str | None = None
     base_url: str = BASE_URL
 
     def _read_ini(self, parser: configparser.ConfigParser):
@@ -489,6 +485,8 @@ class TgtgConfig(BaseConfig):
         self._ini_get_int(parser, "TGTG", "AccessTokenLifetime", "access_token_lifetime")
         self._ini_get_int(parser, "TGTG", "MaxPollingTries", "max_polling_tries")
         self._ini_get_int(parser, "TGTG", "PollingWaitTime", "polling_wait_time")
+        self._ini_get(parser, "TGTG", "APKVersion", "apk_version")
+        self._ini_get(parser, "TGTG", "UserAgent", "user_agent")
 
     def _read_env(self):
         self._env_get("TGTG_USERNAME", "username")
@@ -499,15 +497,17 @@ class TgtgConfig(BaseConfig):
         self._env_get_int("TGTG_ACCESS_TOKEN_LIFETIME", "access_token_lifetime")
         self._env_get_int("TGTG_MAX_POLLING_TRIES", "max_polling_tries")
         self._env_get_int("TGTG_POLLING_WAIT_TIME", "polling_wait_time")
+        self._env_get("TGTG_APK_VERSION", "apk_version")
+        self._env_get("TGTG_USER_AGENT", "user_agent")
 
 
 @dataclass
 class LocationConfig(BaseConfig):
-    """Location configuration"""
+    """Location configuration."""
 
     enabled: bool = False
-    google_maps_api_key: Union[str, None] = None
-    origin_address: Union[str, None] = None
+    google_maps_api_key: str | None = None
+    origin_address: str | None = None
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "LOCATION", "Enabled", "enabled")
@@ -523,7 +523,7 @@ class LocationConfig(BaseConfig):
     def _read_env(self):
         self._env_get_boolean("LOCATION", "enabled")
         self._env_get("LOCATION_GOOGLE_MAPS_API_KEY", "google_maps_api_key")
-        if environ.get("LOCATION_ADDRESS", None):
+        if getenv("LOCATION_ADDRESS"):
             log.warning(DEPRECATION_NOTICE.format("LOCATION_ADDRESS", "LOCATION_ORIGIN_ADDRESS"))
         self._env_get("LOCATION_ADDRESS", "origin_address")  # legacy support
         self._env_get("LOCATION_ORIGIN_ADDRESS", "origin_address")
@@ -531,24 +531,26 @@ class LocationConfig(BaseConfig):
 
 @dataclass
 class Config(BaseConfig):
-    """Main configuration"""
+    """Main configuration."""
 
-    file: Union[str, None] = None
+    file: str | None = None
     item_ids: list[str] = field(default_factory=list)
     buy_item_ids: list[str] = field(default_factory=list)
     sleep_time: int = 60
     schedule_cron: Cron = field(default_factory=Cron)
     debug: bool = False
     locale: str = "en_US"
+    time_format: str = "24h"
     metrics: bool = False
     metrics_port: int = 8000
     disable_tests: bool = False
     quiet: bool = False
     docker: bool = False
     activity: bool = True
+    port: int = 0
     tgtg: TgtgConfig = field(default_factory=TgtgConfig)
     location: LocationConfig = field(default_factory=LocationConfig)
-    token_path: Union[str, None] = None
+    token_path: str | None = None
     apprise: AppriseConfig = field(default_factory=AppriseConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     pushsafer: PushSaferConfig = field(default_factory=PushSaferConfig)
@@ -559,6 +561,7 @@ class Config(BaseConfig):
     webhook: WebhookConfig = field(default_factory=WebhookConfig)
     script: ScriptConfig = field(default_factory=ScriptConfig)
     discord: DiscordConfig = field(default_factory=DiscordConfig)
+    price_monitoring: bool = False
 
     def __post_init__(self):
         if self.file:
@@ -600,7 +603,7 @@ class Config(BaseConfig):
 
             log.info("Loaded config from environment variables")
 
-        self.token_path = environ.get("TGTG_TOKEN_PATH", None)
+        self.token_path = getenv("TGTG_TOKEN_PATH")
         self._load_tokens()
         self.set_locale()
 
@@ -619,12 +622,15 @@ class Config(BaseConfig):
         self._ini_get_cron(parser, "MAIN", "ScheduleCron", "schedule_cron")
         self._ini_get_boolean(parser, "MAIN", "Debug", "debug")
         self._ini_get(parser, "MAIN", "Locale", "locale")
+        self._ini_get(parser, "MAIN", "TimeFormat", "time_format")
         self._ini_get_boolean(parser, "MAIN", "Metrics", "metrics")
         self._ini_get_int(parser, "MAIN", "MetricsPort", "metrics_port")
         self._ini_get_boolean(parser, "MAIN", "DisableTests", "disable_tests")
         self._ini_get_boolean(parser, "MAIN", "Quiet", "quiet")
         self._ini_get_boolean(parser, "MAIN", "Docker", "docker")
         self._ini_get_boolean(parser, "MAIN", "Activity", "activity")
+        self._ini_get_boolean(parser, "MAIN", "PriceMonitoring", "price_monitoring")
+        self._ini_get_int(parser, "MAIN", "Port", "port")
 
     def _read_env(self):
         self._env_get_list("ITEM_IDS", "item_ids")
@@ -632,12 +638,15 @@ class Config(BaseConfig):
         self._env_get_cron("SCHEDULE_CRON", "schedule_cron")
         self._env_get_boolean("DEBUG", "debug")
         self._env_get("LOCALE", "locale")
+        self._env_get("TIME_FORMAT", "time_format")
         self._env_get_boolean("METRICS", "metrics")
         self._env_get_int("METRICS_PORT", "metrics_port")
         self._env_get_boolean("DISABLE_TESTS", "disable_tests")
         self._env_get_boolean("QUIET", "quiet")
         self._env_get_boolean("DOCKER", "docker")
         self._env_get_boolean("ACTIVITY", "activity")
+        self._env_get_boolean("PRICE_MONITORING", "price_monitoring")
+        self._env_get_int("PORT", "port")
 
     def _open(self, file: str, mode: str) -> IO[Any]:
         if self.token_path is None:
@@ -645,9 +654,7 @@ class Config(BaseConfig):
         return open(Path(self.token_path, file), mode, encoding="utf-8")
 
     def _load_tokens(self) -> None:
-        """
-        Reads tokens from token files
-        """
+        """Reads tokens from token files."""
         if self.token_path is not None:
             try:
                 with self._open("accessToken", "r") as file:
@@ -658,12 +665,11 @@ class Config(BaseConfig):
                     self.tgtg.datadome = file.read()
             except FileNotFoundError:
                 log.warning("No token files in token path.")
-            except EnvironmentError as err:
+            except OSError as err:
                 log.error("Error loading Tokens - %s", err)
 
     def save_tokens(self, access_token: str, refresh_token: str, datadome: str) -> None:
-        """
-        Saves TGTG Access Tokens to config.ini
+        """Saves TGTG Access Tokens to config.ini
         if provided or as files to token_path.
         """
         if self.file is not None:
@@ -680,7 +686,7 @@ class Config(BaseConfig):
                 with open(config_file, "w", encoding="utf-8") as configfile:
                     configfile.write(CONFIG_FILE_HEADER)
                     config.write(configfile)
-            except EnvironmentError as err:
+            except OSError as err:
                 log.error("error saving credentials to config.ini! - %s", err)
         if self.token_path is not None:
             try:
@@ -690,13 +696,11 @@ class Config(BaseConfig):
                     file.write(refresh_token)
                 with self._open("datadome", "w") as file:
                     file.write(datadome)
-            except EnvironmentError as err:
+            except OSError as err:
                 log.error("error saving credentials! - %s", err)
 
     def set(self, section: str, option: str, value: str) -> bool:
-        """
-        Sets an option in config.ini if provided.
-        """
+        """Sets an option in config.ini if provided."""
         if self.file is not None:
             try:
                 config = configparser.ConfigParser()
@@ -708,6 +712,6 @@ class Config(BaseConfig):
                 with open(self.file, "w", encoding="utf-8") as configfile:
                     config.write(configfile)
                 return True
-            except EnvironmentError as err:
+            except OSError as err:
                 log.error("error writing config.ini! - %s", err)
         return False

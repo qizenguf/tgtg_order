@@ -2,7 +2,7 @@ import datetime
 import logging
 import re
 from http import HTTPStatus
-from typing import Any, Union
+from typing import Any
 
 import babel.numbers
 import humanize
@@ -19,6 +19,8 @@ ATTRS = [
     "price",
     "value",
     "currency",
+    "previous_price",
+    "price_drop",
     "pickupdate",
     "favorite",
     "rating",
@@ -48,22 +50,21 @@ log = logging.getLogger("tgtg")
 
 
 class Item:
-    """
-    Takes the raw data from the TGTG API and
+    """Takes the raw data from the TGTG API and
     returns well formated data for notifications.
     """
 
-    def __init__(self, data: dict, location: Union[Location, None] = None, locale: str = "en_US"):
+    def __init__(self, data: dict, location: Location | None = None, locale: str = "en_US", time_format: str = "24h"):
         self.items_available: int = data.get("items_available", 0)
         self.display_name: str = data.get("display_name", "-")
         self.favorite: str = "Yes" if data.get("favorite", False) else "No"
-        self.pickup_interval_start: Union[str, None] = data.get("pickup_interval", {}).get("start", None)
-        self.pickup_interval_end: Union[str, None] = data.get("pickup_interval", {}).get("end", None)
+        self.pickup_interval_start: str | None = data.get("pickup_interval", {}).get("start")
+        self.pickup_interval_end: str | None = data.get("pickup_interval", {}).get("end")
         self.pickup_location: str = data.get("pickup_location", {}).get("address", {}).get("address_line", "-")
 
         item: dict = data.get("item", {})
-        self.item_id: str = item.get("item_id", None)
-        self._rating: Union[float, None] = item.get("average_overall_rating", {}).get("average_overall_rating", None)
+        self.item_id: str = item.get("item_id")  # type: ignore[assignment]
+        self._rating: float | None = item.get("average_overall_rating", {}).get("average_overall_rating")
         self.packaging_option: str = item.get("packaging_option", "-")
         self.item_name: str = item.get("name", "-")
         self.buffet: str = "Yes" if item.get("buffet", False) else "No"
@@ -74,6 +75,7 @@ class Item:
         self._price: float = item_price.get("minor_units", 0) / 10 ** item_price.get("decimals", 0)
         self._value: float = item_value.get("minor_units", 0) / 10 ** item_value.get("decimals", 0)
         self.currency: str = item_price.get("code", "-")
+        self._previous_price: float | None = None
         self.item_logo: str = item.get("logo_picture", {}).get(
             "current_url",
             "https://tgtg-mkt-cms-prod.s3.eu-west-1.amazonaws.com/13512/TGTG_Icon_White_Cirle_1988x1988px_RGB.png",
@@ -89,6 +91,7 @@ class Item:
         self.scanned_on: str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.location = location
         self.locale = locale
+        self.time_format = time_format
 
     @property
     def rating(self) -> str:
@@ -104,6 +107,16 @@ class Item:
     def value(self) -> str:
         return self._format_currency(self._value)
 
+    @property
+    def previous_price(self) -> str | None:
+        if self._previous_price is None:
+            return None
+        return self._format_currency(self._previous_price)
+
+    @property
+    def price_drop(self) -> str:
+        return "YES" if self._previous_price is not None and self._price < self._previous_price else "NO"
+
     def _format_decimal(self, number: float) -> str:
         return babel.numbers.format_decimal(number, locale=self.locale)
 
@@ -114,26 +127,23 @@ class Item:
 
     @staticmethod
     def _datetimeparse(datestr: str) -> datetime.datetime:
-        """
-        Formates datetime string from tgtg api
-        """
+        """Formates datetime string from tgtg api."""
         fmt = "%Y-%m-%dT%H:%M:%SZ"
         value = datetime.datetime.strptime(datestr, fmt)
         return value.replace(tzinfo=datetime.timezone.utc).astimezone(tz=None)
 
     @staticmethod
     def check_mask(text: str) -> None:
-        """
-        Checks whether the variables in the provided string are available
+        """Checks whether the variables in the provided string are available.
 
         Raises MaskConfigurationError
         """
         for match in re.finditer(r"\${{([a-zA-Z0-9_]+)}}", text):
-            if not match.group(1) in ATTRS:
+            if match.group(1) not in ATTRS:
                 raise MaskConfigurationError(match.group(0))
 
     @staticmethod
-    def get_image(url: str) -> Union[bytes, None]:
+    def get_image(url: str) -> bytes | None:
         response = requests.get(url)
         if not response.status_code == HTTPStatus.OK:
             log.warning("Get Image Error: %s - %s", response.status_code, response.content)
@@ -141,11 +151,11 @@ class Item:
         return response.content
 
     @property
-    def item_logo_bytes(self) -> Union[bytes, None]:
+    def item_logo_bytes(self) -> bytes | None:
         return self.get_image(self.item_logo)
 
     @property
-    def item_cover_bytes(self) -> Union[bytes, None]:
+    def item_cover_bytes(self) -> bytes | None:
         return self.get_image(self.item_cover)
 
     @property
@@ -153,15 +163,11 @@ class Item:
         return f"https://share.toogoodtogo.com/item/{self.item_id}"
 
     def _get_variables(self, text: str) -> list[re.Match]:
-        """
-        Returns a list of all variables in the provided string
-        """
+        """Returns a list of all variables in the provided string."""
         return list(re.finditer(r"\${{([a-zA-Z0-9_]+)}}", text))
 
     def unmask(self, text: str) -> str:
-        """
-        Replaces variables with the current values.
-        """
+        """Replaces variables with the current values."""
         if text in ["${{item_logo_bytes}}", "${{item_cover_bytes}}"]:
             matches = self._get_variables(text)
             return getattr(self, matches[0].group(1))
@@ -173,23 +179,29 @@ class Item:
 
     @property
     def pickupdate(self) -> str:
-        """
-        Returns a well formated string, providing the pickup time range
-        """
+        """Returns a well formated string, providing the pickup time range."""
         if self.pickup_interval_start is None or self.pickup_interval_end is None:
             return "-"
         now = datetime.datetime.now()
         pfr = self._datetimeparse(self.pickup_interval_start)
         pto = self._datetimeparse(self.pickup_interval_end)
-        prange = f"{pfr.hour:02d}:{pfr.minute:02d} - {pto.hour:02d}:{pto.minute:02d}"
-        tommorow = now + datetime.timedelta(days=1)
+
+        # Format time based on time_format setting
+        if self.time_format == "12h":
+            # 12-hour format with AM/PM
+            prange = f"{pfr.strftime('%I:%M %p')} - {pto.strftime('%I:%M %p')}"
+        else:
+            # Default 24-hour format
+            prange = f"{pfr.hour:02d}:{pfr.minute:02d} - {pto.hour:02d}:{pto.minute:02d}"
+
+        tomorrow = now + datetime.timedelta(days=1)
         if now.date() == pfr.date():
             return f"{humanize.naturalday(now)}, {prange}"
         if (pfr.date() - now.date()).days == 1:
-            return f"{humanize.naturalday(tommorow)}, {prange}"
+            return f"{humanize.naturalday(tomorrow)}, {prange}"
         return f"{pfr.day}/{pfr.month}, {prange}"
 
-    def _get_distance_time(self, travel_mode: str) -> Union[DistanceTime, None]:
+    def _get_distance_time(self, travel_mode: str) -> DistanceTime | None:
         if self.location is None:
             return None
         return self.location.calculate_distance_time(self.pickup_location, travel_mode)
