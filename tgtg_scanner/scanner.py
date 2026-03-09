@@ -103,7 +103,7 @@ class Scanner:
                     items.append(Item(item_dict, self.location, self.config.locale, self.config.time_format))
             except TgtgAPIError as err:
                 log.error(err)
-        
+
         for item in items:
             self._check_item(item, True)
 
@@ -185,7 +185,7 @@ class Scanner:
         )
         self.notifiers.send(item)
 
-    def run(self, item_id: str = None) -> NoReturn:
+    def run(self, item_id: str = None, amount: int = 1) -> NoReturn:
         """
         Main Loop of the Scanner
         """
@@ -209,7 +209,16 @@ class Scanner:
         self.notifiers.start()
         if not self.config.disable_tests and self.notifiers.notifier_count > 0:
             log.info("Sending test Notifications ...")
-            self.notifiers.send(self._get_test_item())
+            it = Item(
+                {
+                    "item_id": "test_item",
+                    "display_name": "scanner started",
+                    "price": {"minor_units": 0, "currency_code": "EUR"},
+                    "items_available": 1,
+                }
+            )
+            self.notifiers.send(it)
+
         # start scanner
         log.info("Scanner started ...")
         running = True
@@ -223,7 +232,7 @@ class Scanner:
                     running = True
                 try:
                     if item_id != None:
-                        self.buy(item_id)
+                        self.buy(item_id, amount)
                     else:
                         self._job()
                 except Exception:
@@ -283,17 +292,19 @@ class Scanner:
         """
         return self.tgtg_client.get_favorites()
 
-    def buy(self, item_id: str) -> None:
+    def buy(self, item_id: str, amount: int) -> None:
         """Buy an item.
 
         Args:
             item_id (str): Item ID
-        """        """
-        Main Loop of the buying function
+
         """
-        for _ in range(2):
+        if self.notifiers is None:
+            raise RuntimeError("Notifiers not initialized!")
+        for _ in range(amount):
             reservation = self.reservations.make_orders_spin(item_id)
-            self.notifiers.send(reservation)
+            if reservation is not None:
+                self.notifiers.send(reservation)
 
 
     def set_favorite(self, item_id: str) -> None:

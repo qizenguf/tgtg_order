@@ -41,7 +41,6 @@ PROG_PATH = Path(sys.executable).parent if IS_EXECUTABLE else Path(os.getcwd())
 IS_DOCKER = getenv("DOCKER", "False").lower() in {"true", "1", "t", "y", "yes"}
 LOGS_PATH = Path(getenv("LOGS_PATH", PROG_PATH))
 
-
 def main():
     """Wrapper for Scanner and Helper functions."""
     _register_signals()
@@ -101,7 +100,7 @@ def main():
         "-b",
         "--buy",
         nargs="+",
-        metavar="item_id",
+        metavar=("item_id", "amount"),
         help="buy item",
     )
     helper_group.add_argument("-R", "--remove_all", action="store_true", help="remove all favorites and exit")
@@ -209,7 +208,7 @@ def main():
                 print()
         elif args.buy is not None:
             for item_id in args.buy:
-                _run_scanner(scanner, item_id)
+                _run_scanner(scanner, item_id, amount=1)
             print("done.")
 
         elif args.add is not None:
@@ -255,7 +254,7 @@ def _get_config_file() -> Path | None:
         return config_file
     return None
 
-def _run_scanner(scanner: Scanner, item_id: str = None) -> NoReturn:
+def _run_scanner(scanner: Scanner, item_id: str = None, amount: int = 1) -> NoReturn:
     _print_welcome_message()
     _print_version_check()
     if scanner.config.quiet and not scanner.config.debug:
@@ -263,7 +262,7 @@ def _run_scanner(scanner: Scanner, item_id: str = None) -> NoReturn:
             logging.getLogger(logger_name).setLevel(logging.ERROR)
 
     if item_id != None:
-        scanner.run(item_id)
+        scanner.run(item_id, amount)
     else:
         scanner.run()
 

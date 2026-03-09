@@ -1,14 +1,17 @@
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List
+from typing import Dict, List
 import time
 
 from tgtg_scanner.models.item import Item
 from tgtg_scanner.tgtg import TgtgClient
+import threading
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger("tgtg")
-
 
 @dataclass
 class Order:
@@ -23,6 +26,7 @@ class Reservation:
     amount: int
     display_name: str
     payment_url: str = ""
+    pickup_time: str = ""
 
 class Reservations:
     def __init__(self, client: TgtgClient) -> None:
@@ -59,21 +63,35 @@ class Reservations:
                 except Exception as exc:
                     log.warning("Order failed: %s", exc)
 
-    def make_orders_spin(self, item_id: str) -> Reservation:
+    def make_orders_spin(self, item_id: str) -> Reservation | None:
         """Create orders for reservations
 
         Args:
-            state (Dict[str, Item]): Current item state
+            item_id (str): Item ID
             callback (Callable[[Reservation], None]): Callback for each order
         """
         reserv = Reservation(item_id, 1, "spin")
-        for _ in range(32):
+        result = []
+        def attempt_order():
             try:
-                return self._create_order(reserv)
+                result.append(self._create_order(reserv))
             except Exception as exc:
                 log.warning("Order failed: %s", exc)
-                time.sleep(0.8)
-                continue
+
+        for attempt in range(4):
+            threads = []
+            for i in range(6):
+                log.warning("thread is running: %s / 6 (attempt %s / 4)", i + 1, attempt + 1)
+                thread = threading.Thread(target=attempt_order)
+                thread.start()
+                threads.append(thread)
+                time.sleep(2)
+            for thread in threads:
+                thread.join()
+            for res in result:
+                if res is not None:
+                    return res
+        return None
 
     def update_active_orders(self) -> None:
         """Remove orders that are not active anymore."""
@@ -96,7 +114,7 @@ class Reservations:
     def _create_order(self, reservation: Reservation) -> Reservation:
         res = self.client.create_order(reservation.item_id, reservation.amount)
         order_id = res.get("id")
-        log.warning("new order %s", res)
+        log.warning("new order %s", order_id)
         if order_id:
             order = Order(
                 order_id,
@@ -105,6 +123,39 @@ class Reservations:
                 reservation.display_name,
             )
             self.active_orders[order_id] = order
+        try:
+            item = self.client.get_item(reservation.item_id)
+            PACIFIC = ZoneInfo("America/Los_Angeles")
+
+            def parse_utc(ts: str) -> datetime:
+                return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+            start_utc = parse_utc(item["pickup_interval"]["start"])
+            end_utc = parse_utc(item["pickup_interval"]["end"])
+
+            start_local = start_utc.astimezone(PACIFIC)
+            end_local = end_utc.astimezone(PACIFIC)
+
+            today_local = datetime.now(PACIFIC).date()
+
+            def day_label(dt: datetime) -> str:
+                if dt.date() == today_local:
+                    return "Today"
+                elif dt.date() == today_local + timedelta(days=1):
+                    return "Tomorrow"
+                else:
+                    return dt.strftime("%A")  # fallback (Monday, Tuesday, etc.)
+
+            label = day_label(start_local)
+
+            start_time = start_local.strftime('%I:%M %p').lstrip('0')
+            end_time = end_local.strftime('%I:%M %p').lstrip('0')
+            time_string = f"{label}, {start_time} to {end_time} (PT)"
+            print(time_string)
+            reservation.pickup_time = time_string
+            reservation.display_name = item["display_name"]
+        except Exception as exc:
+            log.warning("Failed to fetch item details for reservation: %s", exc)
+            pass
         reservation.payment_url = self.client.pay_order(order_id)
         return reservation
-        

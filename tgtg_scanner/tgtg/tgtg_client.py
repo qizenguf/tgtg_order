@@ -566,9 +566,11 @@ class TgtgClient:
         )
 
     def create_order(self, item_id: str, item_count: int) -> dict[str, str]:
+        log.warning("Order creation post")
         self.login()
         response = self._post(f"{CREATE_ORDER_ENDPOINT}/{item_id}", json={"item_count": item_count})
         if response.json().get("state") != "SUCCESS":
+            log.warning("Order creation post failed: %s", response.json())
             raise TgtgAPIError(response.status_code, response.content)
         return response.json().get("order", {})
 
@@ -586,8 +588,8 @@ class TgtgClient:
                 url_pattern = re.compile(r'"(https?://\S+)"')
                 url = url_pattern.findall(response.json().get("payload"))[0]
                 if url != "":
-                    log.warning("open url for payment %s", url)
-                    webbrowser.open(url)
+                    #log.warning("open url for payment %s", url)
+                    #webbrowser.open(url) # this is optioanl, since the url is also in the payload and can be opened manually by the user. Also, opening it automatically can cause issues if the user is running this script on a server without a browser.
                     return url
 
         return ""

@@ -10,4 +10,4 @@ __version__ = importlib.metadata.version(PAKAGE_NAME)
 __author__ = metadata["Author"]
 __author_email__ = metadata["Author-email"]
 __license__ = metadata["License"]
-__url__ = metadata["Project-URL"].split(", ")[1]
+__url__ = "aoge gogo"
